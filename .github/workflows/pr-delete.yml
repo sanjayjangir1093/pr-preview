@@ -20,4 +20,5 @@ jobs:
           aws-region: us-east-1
 
       - name: Delete EC2 Instance
-        run: pr-preview/scripts/delete-ec2.sh ${{ github.event.number }}
+        run: |
+          bash pr-preview/scripts/delete-ec2.sh ${{ github.event.number }}
