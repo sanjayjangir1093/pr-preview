@@ -20,4 +20,5 @@ jobs:
           aws-region: us-east-1
 
       - name: Create EC2 Instance
-        run: pr-preview/scripts/create-ec2.sh ${{ github.event.number }}
+        run: |
+          bash pr-preview/scripts/create-ec2.sh ${{ github.event.number }}
