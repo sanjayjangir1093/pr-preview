@@ -1,3 +1,31 @@
+<<<<<<< HEAD
+name: Delete PR Preview EC2
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Make scripts executable
+        run: chmod +x pr-preview/scripts/*.sh
+
+      - name: Delete EC2 Instance
+        run: pr-preview/scripts/delete-ec2.sh ${{ github.event.number }}
+=======
 
 #!/bin/bash
 set -e
@@ -28,3 +56,4 @@ aws ec2 terminate-instances \
   --instance-ids $INSTANCE_ID
 
 echo "EC2 terminated: $INSTANCE_ID"
+>>>>>>> f5e100f (efefe)
