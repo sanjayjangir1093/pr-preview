@@ -5,12 +5,14 @@ on:
     types: [opened]
 
 jobs:
-  create:
+  create-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout repo
       - uses: actions/checkout@v4
 
+      # Step 2: Setup AWS credentials
       - name: Setup AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -18,6 +20,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Create Preview EC2
+      # Step 3: Create EC2
+      - name: Create EC2
+        id: create_ec2
         run: |
-          bash pr-preview/scripts/create-ec2.sh ${{ github.event.number }}
+          EC2_IP=$(bash pr-preview/scripts/create-ec2.sh ${{ github.event.number }} | grep "EC2 READY" | awk '{print $3}')
+          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
+
+      # Step 4: Deploy Django via SSM
+      - name: Deploy Django via SSM
+        run: |
+          aws ssm send-command \
+            --targets "Key=tag:Name,Values=pr-preview-${{ github.event.number }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy Django App" \
+            --parameters 'commands=["bash /var/www/app/pr-preview/scripts/deploy-django.sh"]' \
+            --region us-east-1
