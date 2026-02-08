@@ -13,6 +13,29 @@ source "$(dirname "$0")/common.env"
 INSTANCE_NAME="${TAG_PREFIX}-${PR}"
 
 echo "Creating EC2: $INSTANCE_NAME"
+#!/bin/bash
+set -e
+
+PR=$1
+if [ -z "$PR" ]; then
+  echo "Usage: ./create-ec2.sh <PR_NUMBER>"
+  exit 1
+fi
+
+source "$(dirname "$0")/common.env"
+INSTANCE_NAME="${TAG_PREFIX}-${PR}"
+
+echo "Creating EC2: $INSTANCE_NAME"
+
+INSTANCE_ID=$(aws ec2 run-instances \
+  --region "$REGION" \
+  --image-id "$AMI_ID" \
+  --count 1 \
+  --instance-type "$INSTANCE_TYPE" \
+  --security-group-ids "$SG_ID" \
+  --subnet-id "$SUBNET_ID" \
+  --iam-instance-profile Name=pr-preview-ec2-role \
+  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Valu]()
 
 # Launch EC2
 INSTANCE_ID=$(aws ec2 run-instances \

@@ -9,8 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -27,8 +26,8 @@ jobs:
 
       - name: Wait for SSM agent
         run: |
-          echo "Waiting 60s for SSM agent to start..."
-          sleep 60
+          echo "Waiting 90s for SSM agent..."
+          sleep 90
 
       - name: Deploy Django via SSM
         run: |
