@@ -20,7 +20,7 @@ INSTANCE_ID=$(aws ec2 run-instances \
   --instance-type "$INSTANCE_TYPE" \
   --subnet-id "$SUBNET_ID" \
   --security-group-ids "$SG_ID" \
-  --iam-instance-profile Name="AmazonSSMRoleForInstancesQuickSetup" \
+  --iam-instance-profile Name=pr-preview-ec2-role \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME}]" \
   --query "Instances[0].InstanceId" \
   --output text)
