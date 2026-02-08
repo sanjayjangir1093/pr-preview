@@ -12,13 +12,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Debug Repo Structure
-        run: |
-          echo "Current directory:"
-          pwd
-          echo "Repo tree:"
-          ls -R
-
       - name: Setup AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -27,9 +20,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Make scripts executable
-        run: |
-          chmod +x pr-preview/scripts/*.sh
+        run: chmod +x pr-preview/scripts/*.sh
 
       - name: Create EC2 Instance
-        run: |
-          pr-preview/scripts/create-ec2.sh ${{ github.event.number }}
+        run: pr-preview/scripts/create-ec2.sh ${{ github.event.number }}
