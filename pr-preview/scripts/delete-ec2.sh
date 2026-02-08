@@ -1,30 +1,26 @@
+name: Delete PR Preview EC2
 
-#!/bin/bash
-set -e
+on:
+  pull_request:
+    types: [closed]
 
-PR=$1
-REGION="ap-south-1"
+jobs:
+  delete:
+    runs-on: ubuntu-latest
 
-if [ -z "$PR" ]; then
-  echo "Usage: ./delete-ec2.sh <PR_NUMBER>"
-  exit 1
-fi
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-echo "Deleting EC2 for PR-$PR..."
+      - name: Setup AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
-INSTANCE_ID=$(aws ec2 describe-instances \
-  --region $REGION \
-  --filters "Name=tag:Name,Values=pr-preview-$PR" "Name=instance-state-name,Values=running,stopped,pending" \
-  --query "Reservations[*].Instances[*].InstanceId" \
-  --output text)
+      - name: Make scripts executable
+        run: chmod +x pr-preview/scripts/*.sh
 
-if [ -z "$INSTANCE_ID" ]; then
-  echo "No instance found for PR-$PR"
-  exit 0
-fi
-
-aws ec2 terminate-instances \
-  --region $REGION \
-  --instance-ids $INSTANCE_ID
-
-echo "EC2 terminated: $INSTANCE_ID"
+      - name: Delete EC2 Instance
+        run: pr-preview/scripts/delete-ec2.sh ${{ github.event.number }}
