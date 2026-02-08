@@ -37,3 +37,13 @@ EC2_IP=$(aws ec2 describe-instances \
   --output text)
 
 echo "EC2 READY: $EC2_IP"
+
+# Install SSM agent automatically via SSM (for Ubuntu)
+aws ssm send-command \
+  --targets "Key=instanceIds,Values=$INSTANCE_ID" \
+  --document-name "AWS-RunShellScript" \
+  --comment "Install SSM Agent" \
+  --parameters 'commands=["sudo apt update && sudo apt install -y snapd && sudo snap install amazon-ssm-agent --classic && sudo systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service && sudo systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service"]' \
+  --region "$REGION"
+
+echo "SSM Agent installation triggered on EC2: $EC2_IP"
