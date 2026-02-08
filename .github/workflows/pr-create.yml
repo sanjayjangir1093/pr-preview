@@ -9,11 +9,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Setup AWS credentials
       - name: Setup AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -21,14 +19,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # Step 3: Create EC2 instance
       - name: Create EC2
         id: create_ec2
         run: |
           EC2_IP=$(bash pr-preview/scripts/create-ec2.sh ${{ github.event.number }} | grep "EC2 READY" | awk '{print $3}')
           echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
 
-      # Step 4: Deploy Django via SSM
+      - name: Wait for SSM agent
+        run: |
+          echo "Waiting 60s for SSM agent to start..."
+          sleep 60
+
       - name: Deploy Django via SSM
         run: |
           aws ssm send-command \
