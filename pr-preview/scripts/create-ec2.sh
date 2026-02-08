@@ -14,6 +14,7 @@ INSTANCE_NAME="${TAG_PREFIX}-${PR}"
 
 echo "Creating EC2: $INSTANCE_NAME"
 
+# Launch EC2
 INSTANCE_ID=$(aws ec2 run-instances \
   --region "$REGION" \
   --image-id "$AMI_ID" \
@@ -26,19 +27,26 @@ INSTANCE_ID=$(aws ec2 run-instances \
   --query "Instances[0].InstanceId" \
   --output text)
 
-aws ec2 wait instance-running \
-  --region "$REGION" \
-  --instance-ids "$INSTANCE_ID"
+echo "Waiting for EC2 to run..."
+aws ec2 wait instance-running --region "$REGION" --instance-ids "$INSTANCE_ID"
 
-EC2_IP=$(aws ec2 describe-instances \
-  --region "$REGION" \
-  --instance-ids "$INSTANCE_ID" \
-  --query "Reservations[0].Instances[0].PublicIpAddress" \
-  --output text)
+# Wait for public IP
+for i in {1..20}; do
+    EC2_IP=$(aws ec2 describe-instances \
+        --region "$REGION" \
+        --instance-ids "$INSTANCE_ID" \
+        --query "Reservations[0].Instances[0].PublicIpAddress" \
+        --output text)
+    if [ "$EC2_IP" != "None" ]; then
+        break
+    fi
+    echo "Waiting for public IP..."
+    sleep 6
+done
 
 echo "EC2 READY: $EC2_IP"
 
-# Install SSM agent automatically via SSM (for Ubuntu)
+# Install SSM agent via SSM (Ubuntu)
 aws ssm send-command \
   --targets "Key=instanceIds,Values=$INSTANCE_ID" \
   --document-name "AWS-RunShellScript" \
