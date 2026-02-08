@@ -1,79 +1,61 @@
 #!/bin/bash
 set -e
 
-APP_DIR=/var/www/django-app
+echo "Starting Django Deployment"
 
-echo "Installing packages..."
-sudo apt update -y
-sudo apt install -y python3 python3-pip python3-venv nginx git
+apt update -y
+apt install -y python3 python3-pip python3-venv nginx git
 
-echo "Creating app directory..."
-sudo mkdir -p /var/www
-sudo chown -R ubuntu:ubuntu /var/www
+mkdir -p /var/www
 cd /var/www
 
-if [ ! -d django-app ]; then
-  git clone https://github.com/sanjayjangir1093/pr-preview.git django-app
-fi
+git clone https://github.com/sanjayjangir1093/pr-preview.git app
+cd app
 
-cd django-app
-
-echo "Setting up virtualenv..."
 python3 -m venv venv
 source venv/bin/activate
 
 pip install --upgrade pip
+pip install django gunicorn
 
-if [ -f requirements.txt ]; then
-  pip install -r requirements.txt
-fi
-
-echo "Running migrations..."
 python manage.py migrate || true
 python manage.py collectstatic --noinput || true
 
-echo "Creating Gunicorn service..."
-sudo tee /etc/systemd/system/gunicorn.service > /dev/null <<EOF
+cat >/etc/systemd/system/gunicorn.service <<EOF
 [Unit]
 Description=gunicorn daemon
 After=network.target
 
 [Service]
-User=ubuntu
+User=root
 Group=www-data
-WorkingDirectory=$APP_DIR
-ExecStart=$APP_DIR/venv/bin/gunicorn \
-          --access-logfile - \
-          --workers 3 \
-          --bind unix:$APP_DIR/gunicorn.sock \
-          backend.wsgi:application
+WorkingDirectory=/var/www/app
+ExecStart=/var/www/app/venv/bin/gunicorn --workers 3 --bind unix:/var/www/app/gunicorn.sock pr_preview.wsgi:application
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl start gunicorn
-sudo systemctl enable gunicorn
+systemctl daemon-reload
+systemctl enable gunicorn
+systemctl restart gunicorn
 
-echo "Configuring Nginx..."
-sudo tee /etc/nginx/sites-available/django > /dev/null <<EOF
+cat >/etc/nginx/sites-available/pr-preview <<EOF
 server {
     listen 80;
     server_name _;
 
     location / {
-        proxy_pass http://unix:$APP_DIR/gunicorn.sock;
+        proxy_pass http://unix:/var/www/app/gunicorn.sock;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
     }
 }
 EOF
 
-sudo ln -sf /etc/nginx/sites-available/django /etc/nginx/sites-enabled/django
-sudo rm -f /etc/nginx/sites-enabled/default
+ln -sf /etc/nginx/sites-available/pr-preview /etc/nginx/sites-enabled
+rm -f /etc/nginx/sites-enabled/default
 
-sudo nginx -t
-sudo systemctl restart nginx
+systemctl restart nginx
 
-echo "Django deployed successfully 🚀"
+echo "Deployment Completed Successfully"
