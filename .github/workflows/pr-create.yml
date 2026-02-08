@@ -1,0 +1,24 @@
+name: Create PR Preview EC2
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ap-south-1
+
+      - name: Create EC2
+        run: |
+          chmod +x scripts/*.sh
+          scripts/create-ec2.sh ${{ github.event.number }}
