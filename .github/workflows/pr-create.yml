@@ -5,7 +5,7 @@ on:
     types: [opened]
 
 jobs:
-  create-and-deploy:
+  create:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,16 +18,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Create EC2
-        id: create_ec2
+      - name: Create Preview EC2
+        id: ec2
         run: |
           EC2_IP=$(bash pr-preview/scripts/create-ec2.sh ${{ github.event.number }} | grep "EC2 READY" | awk '{print $3}')
           echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
-
-      - name: Wait for SSM agent
-        run: |
-          echo "Waiting 90s for SSM agent..."
-          sleep 90
+          echo "Waiting 60s for SSM agent to start..."
+          sleep 60
 
       - name: Deploy Django via SSM
         run: |
