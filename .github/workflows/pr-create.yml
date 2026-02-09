@@ -2,7 +2,7 @@ name: PR Preview EC2
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize, reopened]
 
 jobs:
   create:
@@ -11,8 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -21,16 +21,21 @@ jobs:
       - name: Create Preview EC2
         id: ec2
         run: |
-          EC2_IP=$(bash pr-preview/scripts/create-ec2.sh ${{ github.event.number }} | grep "EC2 READY" | awk '{print $3}')
-          echo "ec2_ip=$EC2_IP" >> $GITHUB_OUTPUT
-          echo "Waiting 60s for SSM agent to start..."
-          sleep 60
+          IP=$(bash pr-preview/scripts/create-ec2.sh ${{ github.event.number }} | grep "EC2 READY" | awk '{print $3}')
+          echo "ec2_ip=$IP" >> $GITHUB_OUTPUT
+          echo "EC2 Public IP: $IP"
 
-      - name: Deploy Django via SSM
+      - name: Setup PEM Key
         run: |
-          aws ssm send-command \
-            --targets "Key=tag:Name,Values=pr-preview-${{ github.event.number }}" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy Django App" \
-            --parameters 'commands=["bash /var/www/app/pr-preview/scripts/deploy-django.sh"]' \
-            --region us-east-1
+          echo "${{ secrets.EC2_PEM }}" | base64 -d > new.pem
+          chmod 400 new.pem
+
+      - name: Wait for SSH
+        run: sleep 60
+
+      - name: Deploy Django App
+        run: |
+          ssh -o StrictHostKeyChecking=no -i new.pem ubuntu@${{ steps.ec2.outputs.ec2_ip }} 'bash -s' < pr-preview/scripts/deploy-django.sh
+
+      - name: Show Preview URL
+        run: echo "🚀 Preview URL => http://${{ steps.ec2.outputs.ec2_ip }}"

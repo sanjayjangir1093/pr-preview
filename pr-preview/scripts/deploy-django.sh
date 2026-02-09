@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "Starting Django Deployment"
+echo "🚀 Starting Django Deployment"
 
 apt update -y
 apt install -y python3 python3-pip python3-venv nginx git
@@ -9,19 +9,23 @@ apt install -y python3 python3-pip python3-venv nginx git
 mkdir -p /var/www
 cd /var/www
 
-git clone https://github.com/sanjayjangir1093/pr-preview.git app || cd app && git pull
-cd app
+if [ ! -d app ]; then
+  git clone https://github.com/sanjayjangir1093/pr-preview.git app
+else
+  cd app && git pull
+fi
+
+cd /var/www/app
 
 python3 -m venv venv
 source venv/bin/activate
 
 pip install --upgrade pip
-pip install django gunicorn
+pip install -r requirements.txt || pip install django gunicorn
 
 python manage.py migrate || true
 python manage.py collectstatic --noinput || true
 
-# Gunicorn systemd service
 cat >/etc/systemd/system/gunicorn.service <<EOF
 [Unit]
 Description=gunicorn daemon
@@ -41,7 +45,6 @@ systemctl daemon-reload
 systemctl enable gunicorn
 systemctl restart gunicorn
 
-# NGINX config
 cat >/etc/nginx/sites-available/pr-preview <<EOF
 server {
     listen 80;
@@ -60,4 +63,4 @@ rm -f /etc/nginx/sites-enabled/default
 
 systemctl restart nginx
 
-echo "Deployment Completed Successfully"
+echo "✅ Deployment Completed Successfully"
