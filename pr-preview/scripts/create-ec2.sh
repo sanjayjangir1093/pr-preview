@@ -2,29 +2,36 @@
 set -e
 
 PR=$1
-REGION=us-east-1
-AMI=ami-0fc5d935ebf8bc3bc   # Amazon Linux 2 (SSM supported)
-TYPE=t3.micro
-NAME=pr-preview-$PR
+REGION="us-east-1"
+AMI="ami-0c398cb65a93047f2"   # Ubuntu 22.04
+TYPE="t3.micro"
+KEY="new"
+SG="sg-0dfdfeed826aa181c"
+SUBNET="subnet-0a0c27952b7bab8ee"
+
+NAME="pr-preview-$PR"
 
 echo "Creating EC2: $NAME"
 
 INSTANCE_ID=$(aws ec2 run-instances \
+  --region $REGION \
   --image-id $AMI \
   --instance-type $TYPE \
-  --region $REGION \
+  --key-name $KEY \
+  --security-group-ids $SG \
+  --subnet-id $SUBNET \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME},{Key=PR,Value=$PR}]" \
-  --iam-instance-profile Name=EC2SSMRole \
-  --security-group-ids sg-0dfdfeed826aa181c \
-  --subnet-id subnet-0a0c27952b7bab8ee \
+  --user-data file://pr-preview/scripts/user-data.sh \
   --query "Instances[0].InstanceId" \
   --output text)
 
-aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+aws ec2 wait instance-running --region $REGION --instance-ids $INSTANCE_ID
 
 IP=$(aws ec2 describe-instances \
+  --region $REGION \
   --instance-ids $INSTANCE_ID \
   --query "Reservations[0].Instances[0].PublicIpAddress" \
   --output text)
 
 echo "EC2 READY $IP"
+echo "APP URL: http://$IP"
