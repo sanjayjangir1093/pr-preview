@@ -1,41 +1,21 @@
-name: PR Preview EC2
+name: PR Preview Create
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, reopened, synchronize]
 
 jobs:
   create:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Create Preview EC2
-        id: ec2
+      - name: Create EC2
         run: |
-          IP=$(bash pr-preview/scripts/create-ec2.sh ${{ github.event.number }} | grep "EC2 READY" | awk '{print $3}')
-          echo "ec2_ip=$IP" >> $GITHUB_OUTPUT
-          echo "EC2 Public IP: $IP"
-
-      - name: Setup PEM Key
-        run: |
-          echo "${{ secrets.EC2_PEM }}" | base64 -d > new.pem
-          chmod 400 new.pem
-
-      - name: Wait for SSH
-        run: sleep 60
-
-      - name: Deploy Django App
-        run: |
-          ssh -o StrictHostKeyChecking=no -i new.pem ubuntu@${{ steps.ec2.outputs.ec2_ip }} 'bash -s' < pr-preview/scripts/deploy-django.sh
-
-      - name: Show Preview URL
-        run: echo "🚀 Preview URL => http://${{ steps.ec2.outputs.ec2_ip }}"
+          bash pr-preview/scripts/create-ec2.sh ${{ github.event.pull_request.number }}
