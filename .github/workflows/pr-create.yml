@@ -2,11 +2,10 @@ name: PR Preview Create
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened]
 
 jobs:
   create:
-    if: github.event.pull_request.merged == false
     runs-on: ubuntu-latest
 
     steps:
