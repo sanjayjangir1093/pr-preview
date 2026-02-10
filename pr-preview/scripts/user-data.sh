@@ -13,19 +13,17 @@ echo "===== USER DATA START ====="
 apt update -y
 apt install -y git python3 python3-pip python3-venv nginx
 
-echo "Creating /var/www"
 mkdir -p /var/www
 cd /var/www
 
-echo "Cloning repository..."
-git clone "$REPO_URL" pr-preview
+echo "Cloning repo..."
+git clone $REPO_URL pr-preview
 
-echo "Repo cloned, listing files:"
+echo "Repo content:"
 ls -la /var/www/pr-preview
 
-cd "$APP_DIR"
+cd $APP_DIR
 
-echo "Setting up virtualenv"
 python3 -m venv venv
 source venv/bin/activate
 
@@ -35,8 +33,6 @@ pip install gunicorn
 
 python manage.py migrate --noinput || true
 python manage.py collectstatic --noinput || true
-
-echo "Creating gunicorn service"
 
 cat >/etc/systemd/system/gunicorn.service <<EOF
 [Unit]
@@ -59,8 +55,6 @@ EOF
 systemctl daemon-reload
 systemctl enable gunicorn
 systemctl restart gunicorn
-
-echo "Configuring nginx"
 
 cat >/etc/nginx/sites-available/pr-preview <<EOF
 server {
