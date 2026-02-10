@@ -34,3 +34,17 @@ INSTANCE_ID=$(aws ec2 run-instances \
   --output text)
 
 aws ec2 wait instance-running --region $REGION --instance-ids $INSTANCE_ID
+
+IP=$(aws ec2 describe-instances \
+  --region $REGION \
+  --instance-ids $INSTANCE_ID \
+  --query "Reservations[0].Instances[0].PublicIpAddress" \
+  --output text)
+
+echo "===================================="
+echo "🚀 PR PREVIEW READY"
+echo "PR NUMBER : $PR"
+echo "EC2 IP    : $IP"
+echo "APP URL   : http://$IP"
+echo "===================================="
+
