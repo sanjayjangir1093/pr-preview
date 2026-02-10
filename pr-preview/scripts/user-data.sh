@@ -8,6 +8,8 @@ REPO="https://github.com/sanjayjangir1093/pr-preview.git"
 VENV_DIR="$APP_DIR/venv"
 SOCKET="$APP_DIR/gunicorn.sock"
 USER="ubuntu"
+GROUP="www-data"
+DJANGO_APP="todoApp"  # change to your Django wsgi module if needed
 
 # Update and install packages
 apt-get update -y
@@ -21,11 +23,13 @@ rm -rf $APP_DIR
 git clone $REPO $APP_DIR
 cd $APP_DIR
 
-# Create virtual environment
+# Set permissions
+chown -R $USER:$GROUP $APP_DIR
+chmod -R 775 $APP_DIR
+
+# Create virtual environment and install dependencies
 python3 -m venv venv
 source $VENV_DIR/bin/activate
-
-# Upgrade pip and install requirements
 pip install --upgrade pip
 pip install -r requirements.txt
 
@@ -39,14 +43,17 @@ deactivate
 # Gunicorn systemd service
 cat > /etc/systemd/system/gunicorn.service << EOF
 [Unit]
-Description=gunicorn daemon
+Description=Gunicorn daemon for PR Preview
 After=network.target
 
 [Service]
 User=$USER
-Group=www-data
+Group=$GROUP
 WorkingDirectory=$APP_DIR
-ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET pr_preview.wsgi:application
+Environment="PATH=$VENV_DIR/bin:\$PATH"
+ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET $DJANGO_APP.wsgi:application
+Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
