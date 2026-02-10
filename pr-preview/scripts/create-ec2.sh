@@ -3,13 +3,27 @@ set -e
 
 PR=$1
 REGION="us-east-1"
-AMI="ami-0c398cb65a93047f2"   # Ubuntu 22.04
+AMI="ami-0c398cb65a93047f2"
 TYPE="t3.micro"
 KEY="new"
 SG="sg-0dfdfeed826aa181c"
 SUBNET="subnet-0a0c27952b7bab8ee"
 
 NAME="pr-preview-$PR"
+
+echo "Checking if EC2 already exists for PR $PR..."
+
+EXISTING=$(aws ec2 describe-instances \
+  --region $REGION \
+  --filters "Name=tag:PR,Values=$PR" \
+           "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+  --query "Reservations[].Instances[].InstanceId" \
+  --output text)
+
+if [ -n "$EXISTING" ]; then
+  echo "EC2 already exists for PR $PR: $EXISTING"
+  exit 0
+fi
 
 echo "Creating EC2: $NAME"
 
@@ -33,5 +47,5 @@ IP=$(aws ec2 describe-instances \
   --query "Reservations[0].Instances[0].PublicIpAddress" \
   --output text)
 
-echo "EC2 READY $IP"
+echo "EC2 READY: $IP"
 echo "APP URL: http://$IP"
