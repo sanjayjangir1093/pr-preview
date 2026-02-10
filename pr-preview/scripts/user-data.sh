@@ -1,49 +1,43 @@
 #!/bin/bash
 set -e
-
-LOG=/var/log/user-data.log
-exec > >(tee -a $LOG) 2>&1
-
 echo "===== USER DATA START ====="
 
-# Update system & install packages
+# Update packages
 apt update -y
-apt install -y python3 python3-pip python3-venv git nginx
+apt upgrade -y
 
-APP_DIR=/var/www/pr-preview
-REPO_URL="https://github.com/sanjayjangir1093/pr-preview.git"
+# Install required packages
+apt install -y python3-pip python3-dev python3-venv build-essential nginx git
 
-# Clone repo
-rm -rf $APP_DIR
-git clone $REPO_URL $APP_DIR
-
-cd $APP_DIR
-
-# Rename Django project folder (replace '-' with '_')
-if [ -d "pr-preview" ]; then
-    mv pr-preview pr_preview
+# Clone your repo (replace with your repo)
+cd /var/www
+if [ ! -d "pr-preview" ]; then
+    git clone git@github.com:sanjayjangir1093/pr-preview.git
 fi
 
-# Create Python virtualenv
+cd pr-preview
+
+# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# Upgrade pip & install dependencies
+# Upgrade pip
 pip install --upgrade pip
-if [ -f requirements.txt ]; then
+
+# Install dependencies from requirements.txt if exists
+if [ -f "requirements.txt" ]; then
     pip install -r requirements.txt
 else
     pip install django gunicorn
 fi
 
-# Apply migrations & collect static files
-if [ -f manage.py ]; then
-    python manage.py migrate || echo "Migration failed"
-    python manage.py collectstatic --noinput || echo "Collectstatic failed"
-fi
+# Django migrations & collectstatic
+export DJANGO_SETTINGS_MODULE=pr_preview.settings
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
 
-# Setup Gunicorn systemd service
-cat > /etc/systemd/system/gunicorn.service <<EOF
+# Create Gunicorn systemd service
+cat > /etc/systemd/system/gunicorn.service <<EOL
 [Unit]
 Description=gunicorn daemon
 After=network.target
@@ -51,25 +45,30 @@ After=network.target
 [Service]
 User=ubuntu
 Group=www-data
-WorkingDirectory=$APP_DIR
-ExecStart=$APP_DIR/venv/bin/gunicorn --workers 3 --bind unix:/run/gunicorn.sock pr_preview.wsgi:application
+WorkingDirectory=/var/www/pr-preview
+ExecStart=/var/www/pr-preview/venv/bin/gunicorn \\
+    --workers 3 \\
+    --bind unix:/run/gunicorn.sock \\
+    --chmod-socket=666 \\
+    pr_preview.wsgi:application
 
 [Install]
 WantedBy=multi-user.target
-EOF
+EOL
 
+# Start and enable Gunicorn
 systemctl daemon-reload
 systemctl enable gunicorn
-systemctl restart gunicorn || echo "Gunicorn failed"
+systemctl restart gunicorn
 
-# Setup Nginx config
-cat > /etc/nginx/sites-available/pr-preview <<EOF
+# Configure Nginx
+cat > /etc/nginx/sites-available/pr-preview <<EOL
 server {
     listen 80;
     server_name _;
 
     location /static/ {
-        alias $APP_DIR/static/;
+        alias /var/www/pr-preview/static/;
     }
 
     location / {
@@ -78,11 +77,10 @@ server {
         proxy_pass http://unix:/run/gunicorn.sock;
     }
 }
-EOF
+EOL
 
-rm -f /etc/nginx/sites-enabled/default
-ln -sf /etc/nginx/sites-available/pr-preview /etc/nginx/sites-enabled
-
+# Enable Nginx site
+ln -sf /etc/nginx/sites-available/pr-preview /etc/nginx/sites-enabled/
 nginx -t
 systemctl restart nginx
 
