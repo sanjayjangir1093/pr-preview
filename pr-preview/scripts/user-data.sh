@@ -6,21 +6,26 @@ exec > >(tee -a $LOG) 2>&1
 
 APP_DIR="/var/www/pr-preview"
 REPO_URL="https://github.com/sanjayjangir1093/pr-preview.git"
-DJANGO_PROJECT="pr_preview"   # folder that has wsgi.py
+DJANGO_PROJECT="pr_preview"
 
-echo "🚀 Starting Django auto deployment"
+echo "===== USER DATA START ====="
 
 apt update -y
 apt install -y git python3 python3-pip python3-venv nginx
 
-rm -rf $APP_DIR
+echo "Creating /var/www"
 mkdir -p /var/www
 cd /var/www
 
-git clone $REPO_URL pr-preview
+echo "Cloning repository..."
+git clone "$REPO_URL" pr-preview
 
-cd $APP_DIR
+echo "Repo cloned, listing files:"
+ls -la /var/www/pr-preview
 
+cd "$APP_DIR"
+
+echo "Setting up virtualenv"
 python3 -m venv venv
 source venv/bin/activate
 
@@ -30,6 +35,8 @@ pip install gunicorn
 
 python manage.py migrate --noinput || true
 python manage.py collectstatic --noinput || true
+
+echo "Creating gunicorn service"
 
 cat >/etc/systemd/system/gunicorn.service <<EOF
 [Unit]
@@ -52,6 +59,8 @@ EOF
 systemctl daemon-reload
 systemctl enable gunicorn
 systemctl restart gunicorn
+
+echo "Configuring nginx"
 
 cat >/etc/nginx/sites-available/pr-preview <<EOF
 server {
@@ -76,4 +85,4 @@ ln -s /etc/nginx/sites-available/pr-preview /etc/nginx/sites-enabled/pr-preview
 nginx -t
 systemctl restart nginx
 
-echo "✅ Django deployment finished"
+echo "===== USER DATA COMPLETE ====="
