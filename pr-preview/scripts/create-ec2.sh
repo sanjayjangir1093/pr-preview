@@ -2,7 +2,6 @@
 set -e
 
 PR=$1
-BRANCH=$2
 REGION="us-east-1"
 AMI="ami-0c398cb65a93047f2"
 TYPE="t3.micro"
@@ -12,6 +11,8 @@ SUBNET="subnet-0a0c27952b7bab8ee"
 
 NAME="pr-preview-$PR"
 
+echo "Checking existing EC2 for PR $PR"
+
 EXISTING=$(aws ec2 describe-instances \
   --region $REGION \
   --filters "Name=tag:PR,Values=$PR" \
@@ -19,7 +20,15 @@ EXISTING=$(aws ec2 describe-instances \
   --query "Reservations[].Instances[].InstanceId" \
   --output text)
 
-[ -n "$EXISTING" ] && exit 0
+if [ -n "$EXISTING" ]; then
+  echo "EC2 already exists: $EXISTING"
+  exit 0
+fi
+
+echo "Encoding user-data"
+USER_DATA=$(base64 -w 0 pr-preview/scripts/user-data.sh)
+
+echo "Creating EC2: $NAME"
 
 INSTANCE_ID=$(aws ec2 run-instances \
   --region $REGION \
@@ -29,7 +38,7 @@ INSTANCE_ID=$(aws ec2 run-instances \
   --security-group-ids $SG \
   --subnet-id $SUBNET \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME},{Key=PR,Value=$PR}]" \
-  --user-data file://<(env PR=$PR BRANCH=$BRANCH envsubst < pr-preview/scripts/user-data.sh) \
+  --user-data "$USER_DATA" \
   --query "Instances[0].InstanceId" \
   --output text)
 
@@ -47,4 +56,3 @@ echo "PR NUMBER : $PR"
 echo "EC2 IP    : $IP"
 echo "APP URL   : http://$IP"
 echo "===================================="
-
