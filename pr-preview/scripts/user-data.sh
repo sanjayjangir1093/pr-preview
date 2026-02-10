@@ -4,36 +4,32 @@ set -e
 LOG=/var/log/user-data.log
 exec > >(tee -a $LOG) 2>&1
 
-APP_NAME="pr-preview"
-APP_DIR="/var/www/$APP_NAME"
+APP_DIR="/var/www/pr-preview"
 REPO_URL="https://github.com/sanjayjangir1093/pr-preview.git"
-DJANGO_PROJECT="pr_preview"   # folder with wsgi.py
-BRANCH="${BRANCH:-main}"
+DJANGO_PROJECT="pr_preview"   # folder that has wsgi.py
 
-echo "🚀 Deploying PR branch: $BRANCH"
+echo "🚀 Starting Django auto deployment"
 
 apt update -y
-apt install -y \
-  git python3 python3-pip python3-venv \
-  nginx build-essential
+apt install -y git python3 python3-pip python3-venv nginx
 
+rm -rf $APP_DIR
 mkdir -p /var/www
 cd /var/www
 
-git clone -b "$BRANCH" "$REPO_URL" "$APP_DIR"
+git clone $REPO_URL pr-preview
 
-cd "$APP_DIR"
+cd $APP_DIR
 
 python3 -m venv venv
 source venv/bin/activate
 
 pip install --upgrade pip
 pip install -r requirements.txt
-
-python manage.py migrate --noinput
-python manage.py collectstatic --noinput
-
 pip install gunicorn
+
+python manage.py migrate --noinput || true
+python manage.py collectstatic --noinput || true
 
 cat >/etc/systemd/system/gunicorn.service <<EOF
 [Unit]
@@ -53,7 +49,6 @@ ExecStart=$APP_DIR/venv/bin/gunicorn \
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reexec
 systemctl daemon-reload
 systemctl enable gunicorn
 systemctl restart gunicorn
@@ -76,9 +71,9 @@ server {
 EOF
 
 rm -f /etc/nginx/sites-enabled/default
-ln -s /etc/nginx/sites-available/pr-preview /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/pr-preview /etc/nginx/sites-enabled/pr-preview
 
 nginx -t
 systemctl restart nginx
 
-echo "✅ Django PR Preview is LIVE"
+echo "✅ Django deployment finished"
