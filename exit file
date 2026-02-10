@@ -1,0 +1,224 @@
+(venv) user_h@Sanjays-MacBook-Pro scripts % cat create-ec2.sh 
+#!/bin/bash
+set -e
+
+PR=$1
+REGION="us-east-1"
+AMI="ami-0c398cb65a93047f2"
+TYPE="t3.micro"
+KEY="new"
+SG="sg-0dfdfeed826aa181c"
+SUBNET="subnet-0a0c27952b7bab8ee"
+
+NAME="pr-preview-$PR"
+
+echo "Checking existing EC2 for PR $PR"
+
+EXISTING=$(aws ec2 describe-instances \
+  --region $REGION \
+  --filters "Name=tag:PR,Values=$PR" \
+           "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+  --query "Reservations[].Instances[].InstanceId" \
+  --output text)
+
+if [ -n "$EXISTING" ]; then
+  echo "EC2 already exists: $EXISTING"
+  exit 0
+fi
+
+echo "Encoding user-data"
+USER_DATA=$(base64 -w 0 pr-preview/scripts/user-data.sh)
+
+echo "Creating EC2: $NAME"
+
+INSTANCE_ID=$(aws ec2 run-instances \
+  --region $REGION \
+  --image-id $AMI \
+  --instance-type $TYPE \
+  --key-name $KEY \
+  --security-group-ids $SG \
+  --subnet-id $SUBNET \
+  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME},{Key=PR,Value=$PR}]" \
+  --user-data "$USER_DATA" \
+  --query "Instances[0].InstanceId" \
+  --output text)
+
+aws ec2 wait instance-running --region $REGION --instance-ids $INSTANCE_ID
+
+IP=$(aws ec2 describe-instances \
+  --region $REGION \
+  --instance-ids $INSTANCE_ID \
+  --query "Reservations[0].Instances[0].PublicIpAddress" \
+  --output text)
+
+echo "===================================="
+echo "🚀 PR PREVIEW READY"
+echo "PR NUMBER : $PR"
+echo "EC2 IP    : $IP"
+echo "APP URL   : http://$IP"
+echo "===================================="
+(venv) user_h@Sanjays-MacBook-Pro scripts % cat user-data.sh 
+#!/bin/bash
+# Cloud-init user-data script for deploying Django app with Gunicorn + Nginx
+set -e
+
+# Variables
+APP_DIR="/var/www/pr-preview"
+REPO="https://github.com/sanjayjangir1093/pr-preview.git"
+VENV_DIR="$APP_DIR/venv"
+SOCKET="$APP_DIR/gunicorn.sock"
+USER="ubuntu"
+GROUP="www-data"
+DJANGO_APP="todoApp"  # change to your Django wsgi module if needed
+
+# Update and install packages
+apt-get update -y
+apt-get upgrade -y
+apt-get install -y python3-pip python3-venv python3-dev build-essential git nginx
+
+# Remove old app directory if exists
+rm -rf $APP_DIR
+
+# Clone repository
+git clone $REPO $APP_DIR
+cd $APP_DIR
+
+# Set permissions
+chown -R $USER:$GROUP $APP_DIR
+chmod -R 775 $APP_DIR
+
+# Create virtual environment and install dependencies
+python3 -m venv venv
+source $VENV_DIR/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Django setup
+python manage.py migrate
+python manage.py collectstatic --noinput
+
+# Deactivate venv
+deactivate
+
+# Gunicorn systemd service
+cat > /etc/systemd/system/gunicorn.service << EOF
+[Unit]
+Description=Gunicorn daemon for PR Preview
+After=network.target
+
+[Service]
+User=$USER
+Group=$GROUP
+WorkingDirectory=$APP_DIR
+Environment="PATH=$VENV_DIR/bin:\$PATH"
+ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET $DJANGO_APP.wsgi:application
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd and start Gunicorn
+systemctl daemon-reload
+systemctl enable gunicorn
+systemctl restart gunicorn
+
+# Nginx configuration
+cat > /etc/nginx/sites-available/pr-preview << EOF
+server {
+    listen 80;
+    server_name _;
+
+    location /static/ {
+        alias $APP_DIR/static/;
+    }
+
+    location / {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_pass http://unix:$SOCKET;
+    }
+
+    access_log /var/log/nginx/pr-preview-access.log;
+    error_log /var/log/nginx/pr-preview-error.log;
+}
+EOF
+
+# Enable Nginx site
+ln -sf /etc/nginx/sites-available/pr-preview /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+
+# Test and reload Nginx
+nginx -t
+systemctl restart nginx
+
+echo "=== USER DATA FINISHED ==="
+(venv) user_h@Sanjays-MacBook-Pro scripts % cat common.env 
+REGION="us-east-1"
+
+AMI_ID="ami-0c398cb65a93047f2"   # Ubuntu 22.04
+INSTANCE_TYPE="t3.micro"
+
+KEY_NAME="new"
+SG_ID="sg-0dfdfeed826aa181c"
+SUBNET_ID="subnet-0a0c27952b7bab8ee"
+
+TAG_PREFIX="pr-preview"
+(venv) user_h@Sanjays-MacBook-Pro scripts % cd ../..  
+(venv) user_h@Sanjays-MacBook-Pro pr-preview % cd .github 
+(venv) user_h@Sanjays-MacBook-Pro .github % la
+zsh: command not found: la
+(venv) user_h@Sanjays-MacBook-Pro .github % ls
+workflows
+(venv) user_h@Sanjays-MacBook-Pro .github % cd workflows 
+(venv) user_h@Sanjays-MacBook-Pro workflows % ls
+pr-create.yml	pr-delete.yml
+(venv) user_h@Sanjays-MacBook-Pro workflows % cat pr-create.yml 
+name: PR Preview Create
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Create EC2
+        run: |
+          bash pr-preview/scripts/create-ec2.sh ${{ github.event.pull_request.number }}
+(venv) user_h@Sanjays-MacBook-Pro workflows % cat pr-delete.yml 
+name: PR Preview Destroy
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  destroy:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Destroy EC2
+        run: |
+          bash pr-preview/scripts/destroy-ec2.sh ${{ github.event.pull_request.number }}
+(venv) user_h@Sanjays-MacBook-Pro workflows % 
