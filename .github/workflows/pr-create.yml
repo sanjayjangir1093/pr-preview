@@ -7,6 +7,7 @@ on:
 jobs:
   create:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -16,9 +17,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Deploy PR Preview
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Deploy PR Preview via CloudFormation
         run: |
           aws cloudformation deploy \
             --template-file cloudformation/pr-preview.yml \
@@ -32,18 +31,7 @@ jobs:
               DBSnapshotIdentifier=temp \
               DBSubnetGroup=default-vpc-0846b504af3e035bd \
               DBUsername=admin \
-              DBPassword=admin123 \
-              GitHubToken=${GH_TOKEN} \
+              DBPassword=${{ secrets.DB_PASSWORD }} \
+              GitHubToken=${{ secrets.GH_TOKEN }} \
               RepoURL=https://github.com/sanjayjangir1093/cicd.git \
             --capabilities CAPABILITY_NAMED_IAM
-
-      - name: Get PR Preview URL
-        run: |
-          URL=$(aws cloudformation describe-stacks \
-            --stack-name pr-preview-${{ github.event.pull_request.number }} \
-            --query "Stacks[0].Outputs[?OutputKey=='AppURL'].OutputValue" \
-            --output text)
-          echo "PR Preview URL: $URL"
-          gh pr comment ${{ github.event.pull_request.number }} --body "🚀 PR Preview ready: $URL"
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}

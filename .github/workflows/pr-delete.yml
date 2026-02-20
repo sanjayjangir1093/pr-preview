@@ -8,6 +8,7 @@ jobs:
   destroy:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -17,7 +18,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Delete PR Preview
+      - name: Delete PR Preview Stack
         run: |
           aws cloudformation delete-stack \
             --stack-name pr-preview-${{ github.event.pull_request.number }}
