@@ -67,24 +67,21 @@ Resources:
           GROUP="www-data"
           DJANGO_APP="todoApp"
 
-          DB_HOST="${DBHost}"
+          DB_HOST="${PRPreviewDB.Endpoint.Address}"
           DB_NAME="temp"
           DB_USER="${DBUsername}"
           DB_PASSWORD="${DBPassword}"
           DB_PORT=3306
 
-          # Install dependencies
           apt-get update -y
           apt-get install -y netcat git python3-pip python3-venv python3-dev build-essential nginx mysql-client
 
-          # Wait for DB
           until nc -z -v -w30 $DB_HOST 3306
           do
             echo "Waiting for DB..."
             sleep 10
           done
 
-          # Clone repo securely using GitHub token
           git clone https://x-access-token:${GitHubToken}@github.com/${RepoURL}.git $APP_DIR
           cd $APP_DIR
 
@@ -106,8 +103,8 @@ Resources:
           python manage.py collectstatic --noinput
           deactivate
 
-          # Gunicorn service
-          cat >/etc/systemd/system/gunicorn.service <<EOF
+          # Gunicorn
+          cat >/etc/systemd/system/gunicorn.service <<'EOF'
 [Unit]
 Description=Gunicorn
 After=network.target
@@ -116,7 +113,7 @@ After=network.target
 User=$USER
 Group=$GROUP
 WorkingDirectory=$APP_DIR
-Environment="PATH=$VENV_DIR/bin:\$PATH"
+Environment="PATH=$VENV_DIR/bin:$PATH"
 ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET $DJANGO_APP.wsgi:application
 Restart=always
 RestartSec=3
@@ -130,7 +127,7 @@ EOF
           systemctl restart gunicorn
 
           # Nginx
-          cat >/etc/nginx/sites-available/cicd <<EOF
+          cat >/etc/nginx/sites-available/cicd <<'EOF'
 server {
     listen 80;
     server_name _;
@@ -138,8 +135,8 @@ server {
         alias $APP_DIR/static/;
     }
     location / {
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_pass http://unix:$SOCKET;
     }
 }
