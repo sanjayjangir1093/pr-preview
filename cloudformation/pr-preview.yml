@@ -1,38 +1,32 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: PR Preview stack - EC2 + RDS + Django deployment
+Description: PR Preview - EC2 + RDS + Django Deployment
 
 Parameters:
   PRNumber:
     Type: String
-    Description: PR number to isolate resources
   KeyName:
     Type: String
-    Description: EC2 Key Pair
   AMI:
     Type: String
-    Description: AMI ID for EC2
-  InstanceType:
-    Type: String
-    Default: t3.micro
   SubnetId:
     Type: String
   SecurityGroupId:
     Type: String
   DBSnapshotIdentifier:
     Type: String
-    Description: RDS snapshot ID
+  DBSubnetGroup:
+    Type: String
   DBUsername:
     Type: String
     Default: admin
   DBPassword:
     Type: String
     NoEcho: true
-  DBSubnetGroup:
-    Type: String
-  GHToken:
+  GitHubToken:
     Type: String
     NoEcho: true
-    Description: GitHub token for repo clone
+  RepoURL:
+    Type: String
 
 Resources:
 
@@ -44,18 +38,16 @@ Resources:
       DBInstanceClass: db.t3.micro
       Engine: mysql
       PubliclyAccessible: true
+      DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:
         - !Ref SecurityGroupId
-      DBSubnetGroupName: !Ref DBSubnetGroup
-      Tags:
-        - Key: PR
-          Value: !Ref PRNumber
 
   PRPreviewEC2:
     Type: AWS::EC2::Instance
+    DependsOn: PRPreviewDB
     Properties:
-      InstanceType: !Ref InstanceType
       ImageId: !Ref AMI
+      InstanceType: t3.micro
       KeyName: !Ref KeyName
       SubnetId: !Ref SubnetId
       SecurityGroupIds:
@@ -63,12 +55,11 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub "pr-preview-${PRNumber}"
-        - Key: PR
-          Value: !Ref PRNumber
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -e
+
           APP_DIR="/var/www/cicd"
           VENV_DIR="$APP_DIR/venv"
           SOCKET="$APP_DIR/gunicorn.sock"
@@ -76,27 +67,25 @@ Resources:
           GROUP="www-data"
           DJANGO_APP="todoApp"
 
-          # Wait for RDS
-          until nc -z -v -w30 ${PRPreviewDB.Endpoint.Address} 3306
+          DB_HOST="${PRPreviewDB.Endpoint.Address}"
+          DB_NAME="temp"
+          DB_USER="${DBUsername}"
+          DB_PASSWORD="${DBPassword}"
+          DB_PORT=3306
+
+          # Install dependencies
+          apt-get update -y
+          apt-get install -y netcat git python3-pip python3-venv python3-dev build-essential nginx mysql-client
+
+          # Wait for DB
+          until nc -z -v -w30 $DB_HOST 3306
           do
-            echo "Waiting for database..."
+            echo "Waiting for DB..."
             sleep 10
           done
 
-          DB_HOST=${PRPreviewDB.Endpoint.Address}
-          DB_NAME=temp
-          DB_USER=${DBUsername}
-          DB_PASSWORD=${DBPassword}
-          DB_PORT=3306
-
-          # Update packages
-          apt-get update -y
-          apt-get upgrade -y
-          apt-get install -y python3-pip python3-venv python3-dev build-essential git nginx mysql-client netcat
-
-          # Clone app using token
-          rm -rf $APP_DIR
-          git clone https://${GHToken}@github.com/sanjayjangir1093/cicd.git $APP_DIR
+          # Clone repo (SECURE)
+          git clone https://${GitHubToken}@${RepoURL#https://} $APP_DIR
           cd $APP_DIR
 
           chown -R $USER:$GROUP $APP_DIR
@@ -117,10 +106,12 @@ Resources:
           python manage.py collectstatic --noinput
           deactivate
 
+          # Gunicorn
           cat > /etc/systemd/system/gunicorn.service << EOF
           [Unit]
-          Description=Gunicorn daemon for cicd
+          Description=Gunicorn
           After=network.target
+
           [Service]
           User=$USER
           Group=$GROUP
@@ -129,6 +120,7 @@ Resources:
           ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET $DJANGO_APP.wsgi:application
           Restart=always
           RestartSec=3
+
           [Install]
           WantedBy=multi-user.target
           EOF
@@ -137,6 +129,7 @@ Resources:
           systemctl enable gunicorn
           systemctl restart gunicorn
 
+          # Nginx
           cat > /etc/nginx/sites-available/cicd << EOF
           server {
               listen 80;
@@ -149,8 +142,6 @@ Resources:
                   proxy_set_header X-Real-IP \$remote_addr;
                   proxy_pass http://unix:$SOCKET;
               }
-              access_log /var/log/nginx/cicd-access.log;
-              error_log /var/log/nginx/cicd-error.log;
           }
           EOF
 
@@ -160,10 +151,6 @@ Resources:
           systemctl restart nginx
 
 Outputs:
-  EC2PublicIP:
-    Description: "EC2 Public IP"
-    Value: !GetAtt PRPreviewEC2.PublicIp
-
   AppURL:
-    Description: "PR Preview App URL"
+    Description: Preview URL
     Value: !Sub "http://${PRPreviewEC2.PublicIp}"

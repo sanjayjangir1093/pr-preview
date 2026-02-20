@@ -1,11 +1,17 @@
 name: PR Preview Create
+
 on:
   pull_request:
     types: [opened, reopened]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -15,7 +21,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Deploy PR Preview Stack
+      - name: Deploy Stack
         run: |
           aws cloudformation deploy \
             --template-file cloudformation/pr-preview.yml \
@@ -27,19 +33,21 @@ jobs:
               SubnetId=subnet-0a0c27952b7bab8ee \
               SecurityGroupId=sg-0dfdfeed826aa181c \
               DBSnapshotIdentifier=temp \
+              DBSubnetGroup=default-vpc-0846b504af3e035bd \
               DBUsername=admin \
               DBPassword=${{ secrets.DB_PASSWORD }} \
-              DBSubnetGroup=default-vpc-0846b504af3e035bd \
-              GHToken=${{ secrets.GH_REPO_TOKEN }} \
+              GitHubToken=${{ secrets.GH_CLONE_TOKEN }} \
+              RepoURL=https://github.com/sanjayjangir1093/cicd.git \
             --capabilities CAPABILITY_NAMED_IAM
 
-      - name: Comment PR with Preview URL
+      - name: Comment URL
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           URL=$(aws cloudformation describe-stacks \
             --stack-name pr-preview-${{ github.event.pull_request.number }} \
             --query "Stacks[0].Outputs[?OutputKey=='AppURL'].OutputValue" \
             --output text)
-          echo "PR Preview URL: $URL"
-          gh pr comment ${{ github.event.pull_request.number }} --body "🚀 PR Preview ready: $URL"
+
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "🚀 PR Preview ready: $URL"
