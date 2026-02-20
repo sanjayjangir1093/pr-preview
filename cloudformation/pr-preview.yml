@@ -67,7 +67,7 @@ Resources:
           GROUP="www-data"
           DJANGO_APP="todoApp"
 
-          DB_HOST="${PRPreviewDB.Endpoint.Address}"
+          DB_HOST="${DBHost}"
           DB_NAME="temp"
           DB_USER="${DBUsername}"
           DB_PASSWORD="${DBPassword}"
@@ -84,8 +84,8 @@ Resources:
             sleep 10
           done
 
-          # Clone repo (SECURE)
-          git clone https://${GitHubToken}@github.com/sanjayjangir1093/cicd.git $APP_DIR
+          # Clone repo securely using GitHub token
+          git clone https://x-access-token:${GitHubToken}@github.com/${RepoURL}.git $APP_DIR
           cd $APP_DIR
 
           chown -R $USER:$GROUP $APP_DIR
@@ -106,44 +106,44 @@ Resources:
           python manage.py collectstatic --noinput
           deactivate
 
-          # Gunicorn
-          cat > /etc/systemd/system/gunicorn.service << EOF
-          [Unit]
-          Description=Gunicorn
-          After=network.target
+          # Gunicorn service
+          cat >/etc/systemd/system/gunicorn.service <<EOF
+[Unit]
+Description=Gunicorn
+After=network.target
 
-          [Service]
-          User=$USER
-          Group=$GROUP
-          WorkingDirectory=$APP_DIR
-          Environment="PATH=$VENV_DIR/bin:\$PATH"
-          ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET $DJANGO_APP.wsgi:application
-          Restart=always
-          RestartSec=3
+[Service]
+User=$USER
+Group=$GROUP
+WorkingDirectory=$APP_DIR
+Environment="PATH=$VENV_DIR/bin:\$PATH"
+ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET $DJANGO_APP.wsgi:application
+Restart=always
+RestartSec=3
 
-          [Install]
-          WantedBy=multi-user.target
-          EOF
+[Install]
+WantedBy=multi-user.target
+EOF
 
           systemctl daemon-reload
           systemctl enable gunicorn
           systemctl restart gunicorn
 
           # Nginx
-          cat > /etc/nginx/sites-available/cicd << EOF
-          server {
-              listen 80;
-              server_name _;
-              location /static/ {
-                  alias $APP_DIR/static/;
-              }
-              location / {
-                  proxy_set_header Host \$host;
-                  proxy_set_header X-Real-IP \$remote_addr;
-                  proxy_pass http://unix:$SOCKET;
-              }
-          }
-          EOF
+          cat >/etc/nginx/sites-available/cicd <<EOF
+server {
+    listen 80;
+    server_name _;
+    location /static/ {
+        alias $APP_DIR/static/;
+    }
+    location / {
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_pass http://unix:$SOCKET;
+    }
+}
+EOF
 
           ln -sf /etc/nginx/sites-available/cicd /etc/nginx/sites-enabled/
           rm -f /etc/nginx/sites-enabled/default
