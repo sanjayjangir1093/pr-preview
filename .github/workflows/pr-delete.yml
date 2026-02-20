@@ -1,5 +1,4 @@
 name: PR Preview Destroy
-
 on:
   pull_request:
     types: [closed]
@@ -8,16 +7,15 @@ jobs:
   destroy:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
-
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - name: Destroy EC2
+      - name: Delete CloudFormation Stack
         run: |
-          bash pr-preview/scripts/destroy-ec2.sh ${{ github.event.pull_request.number }}
+          aws cloudformation delete-stack \
+            --stack-name pr-preview-${{ github.event.pull_request.number }}
+          aws cloudformation wait stack-delete-complete \
+            --stack-name pr-preview-${{ github.event.pull_request.number }}
