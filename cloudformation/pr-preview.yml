@@ -29,10 +29,13 @@ Parameters:
     NoEcho: true
   DBSubnetGroup:
     Type: String
+  GHToken:
+    Type: String
+    NoEcho: true
+    Description: GitHub token for repo clone
 
 Resources:
 
-  # RDS Instance
   PRPreviewDB:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -48,7 +51,6 @@ Resources:
         - Key: PR
           Value: !Ref PRNumber
 
-  # EC2 Instance
   PRPreviewEC2:
     Type: AWS::EC2::Instance
     Properties:
@@ -74,6 +76,13 @@ Resources:
           GROUP="www-data"
           DJANGO_APP="todoApp"
 
+          # Wait for RDS
+          until nc -z -v -w30 ${PRPreviewDB.Endpoint.Address} 3306
+          do
+            echo "Waiting for database..."
+            sleep 10
+          done
+
           DB_HOST=${PRPreviewDB.Endpoint.Address}
           DB_NAME=temp
           DB_USER=${DBUsername}
@@ -83,18 +92,16 @@ Resources:
           # Update packages
           apt-get update -y
           apt-get upgrade -y
-          apt-get install -y python3-pip python3-venv python3-dev build-essential git nginx mysql-client
+          apt-get install -y python3-pip python3-venv python3-dev build-essential git nginx mysql-client netcat
 
-          # Clone app
+          # Clone app using token
           rm -rf $APP_DIR
-          git clone https://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@github.com/sanjayjangir1093/cicd.git $APP_DIR
+          git clone https://${GHToken}@github.com/sanjayjangir1093/cicd.git $APP_DIR
           cd $APP_DIR
 
-          # Set permissions
           chown -R $USER:$GROUP $APP_DIR
           chmod -R 775 $APP_DIR
 
-          # Virtual environment
           python3 -m venv venv
           source $VENV_DIR/bin/activate
           pip install --upgrade pip
@@ -106,12 +113,10 @@ Resources:
           export DJANGO_DB_PASSWORD=$DB_PASSWORD
           export DJANGO_DB_PORT=$DB_PORT
 
-          # Django setup
           python manage.py migrate
           python manage.py collectstatic --noinput
           deactivate
 
-          # Gunicorn service
           cat > /etc/systemd/system/gunicorn.service << EOF
           [Unit]
           Description=Gunicorn daemon for cicd
@@ -132,7 +137,6 @@ Resources:
           systemctl enable gunicorn
           systemctl restart gunicorn
 
-          # Nginx
           cat > /etc/nginx/sites-available/cicd << EOF
           server {
               listen 80;

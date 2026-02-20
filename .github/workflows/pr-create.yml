@@ -30,9 +30,12 @@ jobs:
               DBUsername=admin \
               DBPassword=${{ secrets.DB_PASSWORD }} \
               DBSubnetGroup=default-vpc-0846b504af3e035bd \
+              GHToken=${{ secrets.GH_REPO_TOKEN }} \
             --capabilities CAPABILITY_NAMED_IAM
 
-      - name: Get PR Preview URL
+      - name: Comment PR with Preview URL
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           URL=$(aws cloudformation describe-stacks \
             --stack-name pr-preview-${{ github.event.pull_request.number }} \
