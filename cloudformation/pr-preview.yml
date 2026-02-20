@@ -85,7 +85,7 @@ Resources:
           done
 
           # Clone repo (SECURE)
-          git clone https://${GitHubToken}@${RepoURL#https://} $APP_DIR
+          git clone https://${GitHubToken}@github.com/sanjayjangir1093/cicd.git $APP_DIR
           cd $APP_DIR
 
           chown -R $USER:$GROUP $APP_DIR
