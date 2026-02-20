@@ -1,73 +1,56 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Description: PR Preview Environment (EC2 + RDS from snapshot)
+AWSTemplateFormatVersion: "2010-09-09"
+Description: PR Preview stack - EC2 + RDS + Django deployment
 
 Parameters:
-
   PRNumber:
     Type: String
-    Description: Pull Request Number
-
+    Description: PR number to isolate resources
   KeyName:
-    Type: AWS::EC2::KeyPair::KeyName
-
+    Type: String
+    Description: EC2 Key Pair
   AMI:
-    Type: AWS::EC2::Image::Id
-
+    Type: String
+    Description: AMI ID for EC2
   InstanceType:
     Type: String
     Default: t3.micro
-
   SubnetId:
-    Type: AWS::EC2::Subnet::Id
-
+    Type: String
   SecurityGroupId:
     Type: String
-    Description: Security group allowing EC2 and RDS access
-
   DBSnapshotIdentifier:
     Type: String
-    Description: RDS snapshot identifier
-
+    Description: RDS snapshot ID
   DBUsername:
     Type: String
     Default: admin
-
   DBPassword:
     Type: String
     NoEcho: true
-
   DBSubnetGroup:
     Type: String
-    Description: Existing RDS Subnet Group
 
 Resources:
 
-  # ------------------------------------------
-  # RDS Instance from snapshot
-  # ------------------------------------------
-  PreviewRDS:
+  # RDS Instance
+  PRPreviewDB:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBInstanceIdentifier: !Sub pr-preview-db-${PRNumber}
+      DBInstanceIdentifier: !Sub "pr-preview-db-${PRNumber}"
       DBSnapshotIdentifier: !Ref DBSnapshotIdentifier
       DBInstanceClass: db.t3.micro
       Engine: mysql
       PubliclyAccessible: true
-      DBSubnetGroupName: !Ref DBSubnetGroup
       VPCSecurityGroups:
         - !Ref SecurityGroupId
-      DeletionProtection: false
-      DeleteAutomatedBackups: true
+      DBSubnetGroupName: !Ref DBSubnetGroup
       Tags:
         - Key: PR
           Value: !Ref PRNumber
 
-  # ------------------------------------------
   # EC2 Instance
-  # ------------------------------------------
-  PreviewEC2:
+  PRPreviewEC2:
     Type: AWS::EC2::Instance
-    DependsOn: PreviewRDS
     Properties:
       InstanceType: !Ref InstanceType
       ImageId: !Ref AMI
@@ -77,39 +60,41 @@ Resources:
         - !Ref SecurityGroupId
       Tags:
         - Key: Name
-          Value: !Sub pr-preview-${PRNumber}
+          Value: !Sub "pr-preview-${PRNumber}"
         - Key: PR
           Value: !Ref PRNumber
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -e
-
           APP_DIR="/var/www/cicd"
-          REPO="https://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@github.com/sanjayjangir1093/cicd.git"
           VENV_DIR="$APP_DIR/venv"
           SOCKET="$APP_DIR/gunicorn.sock"
           USER="ubuntu"
           GROUP="www-data"
           DJANGO_APP="todoApp"
 
-          DB_HOST=${PreviewRDS.Endpoint.Address}
+          DB_HOST=${PRPreviewDB.Endpoint.Address}
           DB_NAME=temp
           DB_USER=${DBUsername}
           DB_PASSWORD=${DBPassword}
           DB_PORT=3306
 
+          # Update packages
           apt-get update -y
           apt-get upgrade -y
           apt-get install -y python3-pip python3-venv python3-dev build-essential git nginx mysql-client
 
+          # Clone app
           rm -rf $APP_DIR
-          git clone $REPO $APP_DIR
+          git clone https://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@github.com/sanjayjangir1093/cicd.git $APP_DIR
           cd $APP_DIR
 
+          # Set permissions
           chown -R $USER:$GROUP $APP_DIR
           chmod -R 775 $APP_DIR
 
+          # Virtual environment
           python3 -m venv venv
           source $VENV_DIR/bin/activate
           pip install --upgrade pip
@@ -121,15 +106,16 @@ Resources:
           export DJANGO_DB_PASSWORD=$DB_PASSWORD
           export DJANGO_DB_PORT=$DB_PORT
 
+          # Django setup
           python manage.py migrate
           python manage.py collectstatic --noinput
           deactivate
 
+          # Gunicorn service
           cat > /etc/systemd/system/gunicorn.service << EOF
           [Unit]
-          Description=Gunicorn daemon for PR Preview
+          Description=Gunicorn daemon for cicd
           After=network.target
-
           [Service]
           User=$USER
           Group=$GROUP
@@ -138,7 +124,6 @@ Resources:
           ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET $DJANGO_APP.wsgi:application
           Restart=always
           RestartSec=3
-
           [Install]
           WantedBy=multi-user.target
           EOF
@@ -147,21 +132,19 @@ Resources:
           systemctl enable gunicorn
           systemctl restart gunicorn
 
+          # Nginx
           cat > /etc/nginx/sites-available/cicd << EOF
           server {
               listen 80;
               server_name _;
-
               location /static/ {
                   alias $APP_DIR/static/;
               }
-
               location / {
                   proxy_set_header Host \$host;
                   proxy_set_header X-Real-IP \$remote_addr;
                   proxy_pass http://unix:$SOCKET;
               }
-
               access_log /var/log/nginx/cicd-access.log;
               error_log /var/log/nginx/cicd-error.log;
           }
@@ -173,15 +156,10 @@ Resources:
           systemctl restart nginx
 
 Outputs:
+  EC2PublicIP:
+    Description: "EC2 Public IP"
+    Value: !GetAtt PRPreviewEC2.PublicIp
 
-  PreviewEC2IP:
-    Description: EC2 Public IP
-    Value: !GetAtt PreviewEC2.PublicIp
-
-  PreviewURL:
-    Description: Application URL
-    Value: !Sub http://${PreviewEC2.PublicIp}
-
-  RDSEndpoint:
-    Description: RDS Endpoint
-    Value: !GetAtt PreviewRDS.Endpoint.Address
+  AppURL:
+    Description: "PR Preview App URL"
+    Value: !Sub "http://${PRPreviewEC2.PublicIp}"
