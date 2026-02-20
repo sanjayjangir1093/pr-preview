@@ -84,7 +84,7 @@ Resources:
             sleep 10
           done
 
-          # Clone repo
+          # Clone repo securely
           git clone https://${GitHubToken}@github.com/sanjayjangir1093/cicd.git $APP_DIR
           cd $APP_DIR
 
@@ -106,18 +106,18 @@ Resources:
           python manage.py collectstatic --noinput
           deactivate
 
-          # Gunicorn
-          cat >/etc/systemd/system/gunicorn.service <<EOF
+          # Gunicorn service
+          cat >/etc/systemd/system/gunicorn.service <<'EOF'
 [Unit]
 Description=Gunicorn
 After=network.target
 
 [Service]
-User=$USER
-Group=$GROUP
-WorkingDirectory=$APP_DIR
-Environment="PATH=$VENV_DIR/bin:\$PATH"
-ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind unix:$SOCKET $DJANGO_APP.wsgi:application
+User=ubuntu
+Group=www-data
+WorkingDirectory=/var/www/cicd
+Environment="PATH=/var/www/cicd/venv/bin:$PATH"
+ExecStart=/var/www/cicd/venv/bin/gunicorn --workers 3 --bind unix:/var/www/cicd/gunicorn.sock todoApp.wsgi:application
 Restart=always
 RestartSec=3
 
@@ -129,18 +129,18 @@ EOF
           systemctl enable gunicorn
           systemctl restart gunicorn
 
-          # Nginx
-          cat >/etc/nginx/sites-available/cicd <<EOF
+          # Nginx config
+          cat >/etc/nginx/sites-available/cicd <<'EOF'
 server {
     listen 80;
     server_name _;
     location /static/ {
-        alias $APP_DIR/static/;
+        alias /var/www/cicd/static/;
     }
     location / {
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_pass http://unix:$SOCKET;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_pass http://unix:/var/www/cicd/gunicorn.sock;
     }
 }
 EOF
