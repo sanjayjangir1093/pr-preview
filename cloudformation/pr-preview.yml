@@ -73,16 +73,19 @@ Resources:
           DB_PASSWORD="${DBPassword}"
           DB_PORT=3306
 
+          # Install dependencies
           apt-get update -y
           apt-get install -y netcat git python3-pip python3-venv python3-dev build-essential nginx mysql-client
 
+          # Wait for DB to be ready
           until nc -z -v -w30 $DB_HOST 3306
           do
             echo "Waiting for DB..."
             sleep 10
           done
 
-          git clone https://x-access-token:${GitHubToken}@github.com/${RepoURL}.git $APP_DIR
+          # Clone repo securely
+          git clone https://${GitHubToken}@github.com/sanjayjangir1093/cicd.git $APP_DIR
           cd $APP_DIR
 
           chown -R $USER:$GROUP $APP_DIR
@@ -103,7 +106,7 @@ Resources:
           python manage.py collectstatic --noinput
           deactivate
 
-          # Gunicorn
+          # Gunicorn service
           cat >/etc/systemd/system/gunicorn.service <<'EOF'
 [Unit]
 Description=Gunicorn
@@ -126,7 +129,7 @@ EOF
           systemctl enable gunicorn
           systemctl restart gunicorn
 
-          # Nginx
+          # Nginx configuration
           cat >/etc/nginx/sites-available/cicd <<'EOF'
 server {
     listen 80;
