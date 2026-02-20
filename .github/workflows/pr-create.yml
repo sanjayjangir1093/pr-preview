@@ -1,22 +1,31 @@
 name: PR Preview Create
-
 on:
   pull_request:
     types: [opened, reopened]
 
 jobs:
-  create:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - name: Create EC2
+      - name: Deploy CloudFormation Stack
         run: |
-          bash pr-preview/scripts/create-ec2.sh ${{ github.event.pull_request.number }}
+          aws cloudformation deploy \
+            --template-file cloudformation/pr-preview.yml \
+            --stack-name pr-preview-${{ github.event.pull_request.number }} \
+            --parameter-overrides \
+              PRNumber=${{ github.event.pull_request.number }} \
+              KeyName=new \
+              AMI=ami-0c398cb65a93047f2 \
+              SubnetId=subnet-0a0c27952b7bab8ee \
+              SecurityGroupId=sg-0dfdfeed826aa181c \
+              DBSnapshotIdentifier=temp \
+              DBUsername=admin \
+              DBPassword=${{ secrets.DB_PASSWORD }} \
+              DBSubnetGroup=default-vpc-0846b504af3e035bd \
+            --capabilities CAPABILITY_NAMED_IAM
